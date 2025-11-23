@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Data (exclude to keep image small - generate on build)
+data_raw/*.csv
+data_processed/*.parquet
+
+# Model outputs (regenerate on build)
+outputs/*.joblib
+outputs/*.png
+outputs/*.html
+outputs/*.json
+outputs/*.txt
+
+# Notebooks
+notebooks/*.ipynb
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Documentation drafts
+docs/drafts/
+
+# Release artifacts
+release/

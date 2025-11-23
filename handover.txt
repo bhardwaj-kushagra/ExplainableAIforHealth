@@ -1,0 +1,676 @@
+# Production Handover Document
+## Explainable AI for Climate-Linked Cardiovascular Admissions
+
+**Version:** 1.0.0  
+**Date:** November 2025  
+**Audience:** Deployment engineers, data scientists, system administrators  
+
+---
+
+## 🎯 Quick Reference
+
+**System Status:** ✅ Production-ready with synthetic data  
+**Dependencies:** Python 3.11, Docker, PostgreSQL (optional)  
+**Artifacts Location:** `outputs/` directory  
+**Model File:** `outputs/xgb_model.joblib`  
+**API Port:** 8000 (FastAPI)  
+**Dashboard Port:** 8501 (Streamlit)  
+
+---
+
+## 📂 Critical File Locations
+
+### Model Artifacts
+```
+outputs/xgb_model.joblib           # Trained XGBoost model (load with joblib.load())
+outputs/metrics.json               # Model performance metrics
+outputs/shap_summary.png           # Feature importance visualization
+outputs/policy_statement.txt       # Human-readable policy brief
+outputs/policy_statement.json      # Machine-readable policy data
+```
+
+### Data Files
+```
+data_synthetic/synthetic_data.csv      # Generated synthetic data (REPLACE IN PRODUCTION)
+data_processed/region_daily.parquet    # Preprocessed features (129 columns)
+outputs/data_provenance.json           # Metadata tracking data lineage
+```
+
+### Configuration
+```
+requirements.txt                   # Python dependencies
+Dockerfile                         # Container configuration
+.github/workflows/ci.yml           # CI/CD pipeline
+```
+
+### Documentation
+```
+README.md                          # Comprehensive usage guide
+docs/model_card.md                 # Model documentation
+docs/datasheet.md                  # Data documentation
+LICENSE                            # MIT License
+```
+
+---
+
+## 🔧 Where to Make Changes
+
+### 1. Swapping Synthetic Data with Real Hospital Data
+
+**Current:** System uses `data_synthetic/generate_synthetic.py` for demonstration  
+**Production:** Replace with de-identified hospital admissions CSV  
+
+#### Step-by-Step:
+
+**A. Prepare Real Data CSV**
+
+Format must match this schema:
+```csv
+date,region_id,admissions,temp_mean_c,temp_min_c,temp_max_c,relative_humidity_pct,dew_point_c,pm25_ugm3,day_of_week,is_holiday,season
+2020-01-01,R1,8,15.2,12.0,18.5,60.0,8.5,25.0,2,1,Winter
+2020-01-02,R1,12,16.8,13.5,20.1,55.0,9.2,28.0,3,0,Winter
+```
+
+**Column Specifications:**
+- `date`: YYYY-MM-DD format
+- `region_id`: String identifier (e.g., "R1", "NYC", "LA")
+- `admissions`: Integer count of cardiovascular emergency admissions
+- `temp_mean_c`, `temp_min_c`, `temp_max_c`: Float, degrees Celsius
+- `relative_humidity_pct`: Float, 0-100
+- `dew_point_c`: Float, degrees Celsius
+- `pm25_ugm3`: Float, micrograms per cubic meter
+- `day_of_week`: Integer, 0=Monday, 6=Sunday
+- `is_holiday`: Boolean, 0 or 1
+- `season`: String, one of: "Winter", "Spring", "Summer", "Fall"
+
+**B. Place File in Repository**
+```
+mkdir -p data_raw
+cp /path/to/hospital_admissions.csv data_raw/hospital_admissions.csv
+```
+
+**C. Update Ingestion Script**
+
+Edit `src/ingest.py` line 85:
+```python
+# Change from:
+csv_path = "data_synthetic/synthetic_data.csv"
+
+# To:
+csv_path = "data_raw/hospital_admissions.csv"
+```
+
+**D. Update .gitignore**
+
+Add to `.gitignore` to prevent committing sensitive data:
+```
+data_raw/
+*.csv
+outputs/data_provenance.json
+```
+
+**E. Retrain Models**
+```powershell
+make preprocess  # Reprocess with real data
+make train       # Retrain XGBoost model
+pytest tests/    # Validate results
+```
+
+**F. Verify Performance**
+
+Check `outputs/metrics.json`:
+- `test_r2` should be > 0.70 (acceptable)
+- `test_mae` should be < 2.0 admissions/day (reasonable)
+
+If performance is poor, adjust model hyperparameters in `src/models/xgb_train.py` lines 50-57.
+
+---
+
+### 2. Changing Forecast Data Sources
+
+**Current:** API uses static forecast input from POST requests  
+**Production:** Integrate with real-time weather APIs  
+
+#### Option A: National Weather Service (NWS) API
+
+**Implementation:**
+
+1. **Create forecast fetcher function** in `src/api/forecast_fetcher.py`:
+```python
+import requests
+from typing import List
+from .schemas import ForecastDay
+
+def fetch_nws_forecast(latitude: float, longitude: float, days: int = 5) -> List[ForecastDay]:
+    """
+    Fetch weather forecast from National Weather Service API.
+    
+    Parameters
+    ----------
+    latitude : float
+        Latitude of region (e.g., 40.7128 for NYC)
+    longitude : float
+        Longitude of region (e.g., -74.0060 for NYC)
+    days : int
+        Number of days to forecast (default 5)
+    
+    Returns
+    -------
+    List[ForecastDay]
+        Parsed forecast data matching API schema
+    """
+    # Get gridpoint endpoint
+    points_url = f"https://api.weather.gov/points/{latitude},{longitude}"
+    points_response = requests.get(points_url, headers={"User-Agent": "CVD Health App"})
+    points_response.raise_for_status()
+    forecast_url = points_response.json()["properties"]["forecast"]
+    
+    # Get forecast
+    forecast_response = requests.get(forecast_url, headers={"User-Agent": "CVD Health App"})
+    forecast_response.raise_for_status()
+    periods = forecast_response.json()["properties"]["periods"][:days*2]  # 12-hour periods
+    
+    # Parse and aggregate to daily
+    daily_forecasts = []
+    for i in range(0, len(periods), 2):
+        day_period = periods[i]
+        night_period = periods[i+1] if i+1 < len(periods) else periods[i]
+        
+        forecast_day = ForecastDay(
+            date=day_period["startTime"].split("T")[0],
+            temp_mean_c=convert_f_to_c((day_period["temperature"] + night_period["temperature"]) / 2),
+            temp_max_c=convert_f_to_c(day_period["temperature"]),
+            temp_min_c=convert_f_to_c(night_period["temperature"]),
+            relative_humidity_pct=extract_humidity(day_period["detailedForecast"]),
+            # Estimate dew point from temp and humidity
+            dew_point_c=calculate_dew_point(temp_mean_c, relative_humidity_pct),
+            # PM2.5 requires separate API (see Option B)
+            pm25_ugm3=25.0,  # Default placeholder
+            day_of_week=datetime.strptime(date, "%Y-%m-%d").weekday(),
+            is_holiday=check_holiday(date),
+            season=get_season(date)
+        )
+        daily_forecasts.append(forecast_day)
+    
+    return daily_forecasts[:days]
+
+def convert_f_to_c(fahrenheit: float) -> float:
+    return (fahrenheit - 32) * 5/9
+
+def calculate_dew_point(temp_c: float, rh_pct: float) -> float:
+    """Magnus formula approximation"""
+    a, b = 17.27, 237.7
+    alpha = ((a * temp_c) / (b + temp_c)) + np.log(rh_pct / 100.0)
+    return (b * alpha) / (a - alpha)
+```
+
+2. **Update API endpoint** in `src/api/main.py`:
+```python
+from .forecast_fetcher import fetch_nws_forecast
+
+@app.post("/predict", response_model=PredictResponse)
+def predict(request: PredictRequest):
+    # Replace manual forecast input with API call
+    region_coords = {"R1": (40.7128, -74.0060)}  # Map region IDs to coordinates
+    lat, lon = region_coords.get(request.region_id, (40.7128, -74.0060))
+    
+    forecast_days = fetch_nws_forecast(lat, lon, days=5)
+    
+    # ... rest of existing prediction logic
+```
+
+#### Option B: Air Quality Data (EPA AirNow API)
+
+**Get API Key:** https://docs.airnowapi.org/login
+
+**Add to .env:**
+```
+AIRNOW_API_KEY=your-key-here
+```
+
+**Create fetcher function:**
+```python
+def fetch_airnow_pm25(latitude: float, longitude: float, date: str) -> float:
+    url = f"https://www.airnowapi.org/aq/forecast/latLong/"
+    params = {
+        "format": "application/json",
+        "latitude": latitude,
+        "longitude": longitude,
+        "date": date,
+        "distance": 25,  # Miles
+        "API_KEY": os.getenv("AIRNOW_API_KEY")
+    }
+    response = requests.get(url, params=params)
+    response.raise_for_status()
+    data = response.json()
+    
+    # Extract PM2.5 value
+    for forecast in data:
+        if forecast["ParameterName"] == "PM2.5":
+            return forecast["AQI"]  # Convert AQI to µg/m³ if needed
+    
+    return 25.0  # Default if not available
+```
+
+#### Option C: Commercial Weather API (OpenWeatherMap)
+
+**More comprehensive data but requires paid plan for forecasts**
+
+API: https://openweathermap.org/api/one-call-3
+
+**Integration similar to Option A** but with better PM2.5 coverage and UV index.
+
+---
+
+### 3. Modifying Model Hyperparameters
+
+**File:** `src/models/xgb_train.py` lines 50-57
+
+**Current Configuration:**
+```python
+xgb_model = XGBRegressor(
+    objective='count:poisson',   # For count data
+    n_estimators=300,             # Number of trees
+    max_depth=5,                  # Tree depth (prevent overfitting)
+    learning_rate=0.05,           # Shrinkage rate
+    subsample=0.8,                # Row sampling
+    colsample_bytree=0.8,         # Column sampling
+    random_state=42               # Reproducibility
+)
+```
+
+**Tuning Guidelines:**
+
+- **Underfitting (R² < 0.70):** Increase `n_estimators` to 500, `max_depth` to 7
+- **Overfitting (train R² >> test R²):** Decrease `max_depth` to 3, increase `subsample` to 0.9
+- **Faster training:** Decrease `n_estimators` to 200, increase `learning_rate` to 0.1
+- **Better calibration:** Keep `objective='count:poisson'` for count data
+
+**Hyperparameter Search:**
+
+Add to `xgb_train.py` after line 57:
+```python
+from sklearn.model_selection import RandomizedSearchCV
+
+param_grid = {
+    'n_estimators': [200, 300, 500],
+    'max_depth': [3, 5, 7],
+    'learning_rate': [0.01, 0.05, 0.1],
+    'subsample': [0.7, 0.8, 0.9]
+}
+
+search = RandomizedSearchCV(
+    XGBRegressor(objective='count:poisson', random_state=42),
+    param_distributions=param_grid,
+    n_iter=10,
+    cv=TimeSeriesSplit(n_splits=3),
+    scoring='neg_mean_absolute_error',
+    random_state=42
+)
+search.fit(X_train, y_train)
+print(f"Best params: {search.best_params_}")
+xgb_model = search.best_estimator_
+```
+
+---
+
+### 4. Adding New Regions (Multi-Region Support)
+
+**Current:** Single region "R1"  
+**Production:** Support multiple health districts  
+
+#### Implementation:
+
+**A. Update Data Schema**
+
+Ensure CSV has `region_id` column with unique identifiers:
+```csv
+date,region_id,admissions,...
+2020-01-01,NYC,12,...
+2020-01-01,LA,8,...
+2020-01-01,CHI,15,...
+```
+
+**B. Train Separate Models per Region**
+
+Modify `xgb_train.py` line 30:
+```python
+for region in df["region_id"].unique():
+    df_region = df[df["region_id"] == region]
+    
+    # Train model for this region
+    X_train_region, X_test_region = ...
+    model = XGBRegressor(...)
+    model.fit(X_train_region, y_train_region)
+    
+    # Save with region-specific name
+    joblib.dump(model, f"outputs/xgb_model_{region}.joblib")
+```
+
+**C. Update API to Load Region-Specific Models**
+
+Modify `src/api/main.py` startup:
+```python
+models = {}  # Dictionary of region_id -> model
+
+@app.on_event("startup")
+def load_artifacts():
+    for region in ["NYC", "LA", "CHI"]:
+        model_path = f"outputs/xgb_model_{region}.joblib"
+        if os.path.exists(model_path):
+            models[region] = joblib.load(model_path)
+```
+
+**D. Update Predict Endpoint**
+
+```python
+@app.post("/predict")
+def predict(request: PredictRequest):
+    region_id = request.region_id  # Add to PredictRequest schema
+    model = models.get(region_id)
+    if not model:
+        raise HTTPException(404, f"No model for region {region_id}")
+    
+    # ... rest of prediction logic
+```
+
+---
+
+### 5. Adjusting Feature Engineering
+
+**File:** `src/features.py`
+
+**Current Features:**
+- Lag features: 0-21 days
+- Rolling windows: 3, 7, 14 days
+- Derived indices: heat index, apparent temperature
+
+**Common Modifications:**
+
+**A. Change Lag Range**
+
+Edit line 65 in `features.py`:
+```python
+# Change from:
+def add_lag_features(df, cols, max_lag=21):
+
+# To (for shorter or longer lags):
+def add_lag_features(df, cols, max_lag=14):  # Reduce memory
+# or
+def add_lag_features(df, cols, max_lag=28):  # Capture longer effects
+```
+
+**B. Add Custom Rolling Window**
+
+Add to `add_rolling_features()` line 95:
+```python
+windows = [3, 7, 14, 21, 28]  # Add 21 and 28-day windows
+```
+
+**C. Add New Derived Feature**
+
+Example: Add "humidity stress index"
+```python
+def add_humidity_stress(df: pd.DataFrame) -> pd.DataFrame:
+    """Calculate humidity stress index (high temp + high humidity)"""
+    df["humidity_stress"] = (
+        (df["temp_mean_c"] - 20) * (df["relative_humidity_pct"] / 100)
+    ).clip(lower=0)
+    return df
+```
+
+Then call in `preprocess.py` line 45:
+```python
+df = add_humidity_stress(df)
+```
+
+---
+
+### 6. Changing Alert Thresholds
+
+**File:** `src/api/main.py` lines 120-135 (`/alert` endpoint)
+
+**Current Thresholds:**
+```python
+HIGH_TEMP_THRESHOLD = 30.0      # Celsius
+HIGH_PM25_THRESHOLD = 50.0      # µg/m³
+HIGH_ADMISSION_THRESHOLD = 10.0 # Count
+```
+
+**Production Tuning:**
+
+Calculate thresholds from historical data:
+```python
+import pandas as pd
+import numpy as np
+
+df = pd.read_parquet("data_processed/region_daily.parquet")
+
+# Use 90th percentile as threshold
+HIGH_TEMP_THRESHOLD = df["temp_mean_c"].quantile(0.90)
+HIGH_PM25_THRESHOLD = df["pm25_ugm3"].quantile(0.90)
+HIGH_ADMISSION_THRESHOLD = df["admissions"].quantile(0.90)
+
+print(f"Temp threshold: {HIGH_TEMP_THRESHOLD:.1f}°C")
+print(f"PM2.5 threshold: {HIGH_PM25_THRESHOLD:.1f} µg/m³")
+print(f"Admission threshold: {HIGH_ADMISSION_THRESHOLD:.1f}")
+```
+
+Update `main.py` with calculated values:
+```python
+HIGH_TEMP_THRESHOLD = 28.5      # From 90th percentile
+HIGH_PM25_THRESHOLD = 45.0      # From 90th percentile
+HIGH_ADMISSION_THRESHOLD = 12.0 # From 90th percentile
+```
+
+**Seasonal Thresholds:**
+
+For more nuanced alerts:
+```python
+THRESHOLDS = {
+    "Winter": {"temp": 10.0, "pm25": 55.0},
+    "Spring": {"temp": 20.0, "pm25": 45.0},
+    "Summer": {"temp": 32.0, "pm25": 40.0},
+    "Fall": {"temp": 22.0, "pm25": 50.0}
+}
+
+season = request.season  # Add to AlertRequest schema
+threshold_temp = THRESHOLDS[season]["temp"]
+```
+
+---
+
+### 7. Monitoring and Logging
+
+**Current:** Basic console logging  
+**Production:** Structured logging with monitoring  
+
+#### Add Logging to API
+
+**Update `src/api/main.py`:**
+```python
+import logging
+from datetime import datetime
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('logs/api.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
+@app.post("/predict")
+def predict(request: PredictRequest):
+    logger.info(f"Prediction request for region {request.region_id}")
+    start_time = datetime.now()
+    
+    # ... prediction logic ...
+    
+    elapsed = (datetime.now() - start_time).total_seconds()
+    logger.info(f"Prediction completed in {elapsed:.2f}s")
+    
+    return response
+```
+
+#### Add Performance Monitoring
+
+**Create `src/monitoring/metrics.py`:**
+```python
+from prometheus_client import Counter, Histogram, start_http_server
+
+# Metrics
+prediction_counter = Counter('predictions_total', 'Total predictions')
+prediction_latency = Histogram('prediction_latency_seconds', 'Prediction latency')
+alert_counter = Counter('alerts_total', 'Total alerts triggered')
+
+# Start metrics server on port 9090
+start_http_server(9090)
+```
+
+**Integrate into API:**
+```python
+from .monitoring.metrics import prediction_counter, prediction_latency
+
+@app.post("/predict")
+@prediction_latency.time()  # Decorator for timing
+def predict(request: PredictRequest):
+    prediction_counter.inc()  # Increment counter
+    # ... rest of logic
+```
+
+**Visualization:**
+- Prometheus: `http://localhost:9090`
+- Grafana: Connect to Prometheus for dashboards
+
+---
+
+## 🚨 Troubleshooting
+
+### Issue: Model Performance Degraded
+
+**Symptoms:** R² drops below 0.70, MAE increases significantly  
+**Causes:**
+1. Data drift (climate patterns changing)
+2. Sensor recalibration (weather station changes)
+3. Coding changes (ICD-10 updates)
+
+**Resolution:**
+```powershell
+# Retrain model with recent data
+python src/models/xgb_train.py
+
+# Check SHAP values for new patterns
+python src/explainers.py
+
+# Validate on holdout set
+pytest tests/test_model.py
+```
+
+### Issue: API Returning 503 Errors
+
+**Symptoms:** `/predict` endpoint fails with "Model not loaded"  
+**Cause:** Model file missing or corrupted  
+
+**Resolution:**
+```powershell
+# Verify model exists
+ls outputs/xgb_model.joblib
+
+# Retrain if missing
+python src/models/xgb_train.py
+
+# Restart API
+make run-api
+```
+
+### Issue: Dashboard Not Showing Visualizations
+
+**Symptoms:** Blank pages in Streamlit  
+**Cause:** Missing output files  
+
+**Resolution:**
+```powershell
+# Regenerate all outputs
+make viz
+
+# Check file existence
+ls outputs/*.png outputs/*.html
+
+# Restart dashboard
+make run-dashboard
+```
+
+### Issue: Docker Build Fails
+
+**Symptoms:** Error installing geopandas  
+**Cause:** Missing system dependencies  
+
+**Resolution:**
+```dockerfile
+# Add to Dockerfile before RUN pip install
+RUN apt-get update && apt-get install -y \
+    gcc g++ libgdal-dev libgeos-dev libproj-dev \
+    && rm -rf /var/lib/apt/lists/*
+```
+
+---
+
+## 📋 Pre-Deployment Checklist
+
+**Before going to production, verify:**
+
+- [ ] Real hospital data loaded (no synthetic data)
+- [ ] Model retrained on production data (R² > 0.70)
+- [ ] Weather API integration tested (NWS or equivalent)
+- [ ] Air quality data source configured (EPA AirNow)
+- [ ] Alert thresholds tuned to regional baselines
+- [ ] API authentication enabled (see README Security section)
+- [ ] Logging configured (files + monitoring service)
+- [ ] Database connection string in .env (if using persistence)
+- [ ] Backup strategy for model artifacts (S3, Azure Blob, etc.)
+- [ ] HIPAA compliance review completed
+- [ ] IRB approval obtained (if required)
+- [ ] Data Use Agreement signed with hospital
+- [ ] Load testing completed (100 req/s target)
+- [ ] Disaster recovery plan documented
+- [ ] On-call rotation established
+
+---
+
+## 🔗 Key Contacts
+
+**Data Issues:**
+- Hospital IT: [contact@hospital.org]
+- Data steward: [steward@institution.edu]
+
+**Model Questions:**
+- Data scientist lead: [ds@example.com]
+- ML engineer: [mle@example.com]
+
+**Operations:**
+- DevOps team: [devops@example.com]
+- On-call rotation: [oncall@example.com]
+
+**Security:**
+- Security incidents: [security@example.com]
+- Compliance: [compliance@example.com]
+
+---
+
+## 📚 Additional Resources
+
+- **GitHub Repository:** [Add URL]
+- **Documentation Site:** [Add URL]
+- **Model Registry:** [MLflow/Weights & Biases URL]
+- **Monitoring Dashboard:** [Grafana URL]
+- **Incident Playbook:** [Confluence/Wiki URL]
+
+---
+
+**Last Updated:** November 2025  
+**Document Owner:** [Your Name/Team]  
+**Review Cycle:** Quarterly
