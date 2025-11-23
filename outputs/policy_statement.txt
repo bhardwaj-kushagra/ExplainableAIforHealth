@@ -1,0 +1,66 @@
+======================================================================
+CLIMATE-CARDIOVASCULAR RISK POLICY STATEMENT
+======================================================================
+
+EXECUTIVE SUMMARY
+----------------------------------------------------------------------
+This analysis links daily climate variability to cardiovascular
+emergency admissions using machine learning (XGBoost) and causal
+inference (DLNM-style models). Results provide actionable thresholds
+for public health early warning systems.
+
+TOP DRIVERS (SHAP Analysis)
+----------------------------------------------------------------------
+1. admissions_lag0
+2. admissions_rollmean3
+3. admissions_lag1
+4. admissions_lag2
+5. admissions_rollstd3
+
+CAUSAL EFFECT ESTIMATE
+----------------------------------------------------------------------
+Exposure Variable: admissions
+Lag Window: [0, 1, 2] days
+Hypothetical Increase: +3.0 units
+
+Expected Additional Admissions: 5.52
+95% Confidence Interval: [4.70, 6.34]
+
+Interpretation:
+A 3.0 unit increase in admissions (averaged over lags [0, 1, 2]) is associated with 5.52 additional admissions (95% CI: [4.70, 6.34]).
+
+RECOMMENDED TRIGGER THRESHOLD
+----------------------------------------------------------------------
+Trigger: admissions >= 15.0
+Rationale: 90th percentile of observed distribution
+Expected Admissions When Triggered: 16.8 per day
+Frequency: ~50 days per year
+
+RECOMMENDED ACTIONS
+----------------------------------------------------------------------
+1. Issue public health advisory 24-48 hours before threshold.
+2. Increase staffing in emergency departments during risk periods.
+3. Targeted outreach to vulnerable populations (elderly, chronic CVD).
+4. Coordinate with meteorological services for forecast integration.
+
+METHODOLOGY NOTES
+----------------------------------------------------------------------
+- ML Model: XGBoost with count:poisson objective
+- Explainability: SHAP (TreeExplainer)
+- Causal Inference: Stratified analysis with bootstrap CI
+- Data: Synthetic 3-year daily admissions + meteorology
+- For production use, replace with real hospital data.
+
+LIMITATIONS
+----------------------------------------------------------------------
+- Current model uses synthetic data for demonstration.
+- Confounding by air pollution (PM2.5) included but may be incomplete.
+- Spatial heterogeneity not modeled (single-region analysis).
+- Recommend validation with external hospital datasets.
+
+CONTACT & DATA GOVERNANCE
+----------------------------------------------------------------------
+Model artifacts: outputs/xgb_model.joblib
+Provenance log: outputs/data_provenance.json
+For real data integration, see README.md data governance section.
+======================================================================

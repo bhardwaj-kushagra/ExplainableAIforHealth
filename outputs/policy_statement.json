@@ -1,0 +1,29 @@
+{
+  "top_features": [
+    "admissions_lag0",
+    "admissions_rollmean3",
+    "admissions_lag1",
+    "admissions_lag2",
+    "admissions_rollstd3"
+  ],
+  "causal_effect": {
+    "exposure_var": "admissions",
+    "lag_window": [
+      0,
+      1,
+      2
+    ],
+    "delta": 3.0,
+    "mean_difference": 5.5236101211689235,
+    "ci_lower": 4.6955096222380615,
+    "ci_upper": 6.343353528153956,
+    "interpretation": "A 3.0 unit increase in admissions (averaged over lags [0, 1, 2]) is associated with 5.52 additional admissions (95% CI: [4.70, 6.34])."
+  },
+  "threshold": {
+    "exposure_var": "admissions",
+    "threshold_value": 15.0,
+    "percentile": 90.0,
+    "expected_admissions": 16.801324503311257,
+    "days_above_threshold_per_year": 50
+  }
+}
