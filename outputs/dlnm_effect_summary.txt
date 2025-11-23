@@ -1,0 +1,4 @@
+Reference temp: 20.0
+Increase (C): 3.0
+Relative Rate Change (approx): 1.004
+Model type: Python fallback GLM (Poisson spline)

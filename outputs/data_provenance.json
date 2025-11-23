@@ -1,0 +1,27 @@
+{
+  "timestamp": "2025-11-23T18:41:10.875630Z",
+  "source_file": "data_synthetic\\region_daily.csv",
+  "stored_raw": "data_raw\\region_daily.csv",
+  "rows": 1096,
+  "date_range": [
+    "2020-01-01",
+    "2022-12-31"
+  ],
+  "columns": [
+    "date",
+    "region_id",
+    "admissions",
+    "age_group",
+    "sex",
+    "temp_mean",
+    "temp_min",
+    "temp_max",
+    "dew_point",
+    "rel_humidity",
+    "pm25",
+    "is_holiday"
+  ],
+  "missing_expected_columns": [],
+  "imputations": [],
+  "warnings": []
+}
