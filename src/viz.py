@@ -142,7 +142,13 @@ def create_spatial_risk_map(df: pd.DataFrame, output_dir: Path):
     <i style="background: orange; width: 20px; height: 20px; display: inline-block;"></i> Moderate (5-10)<br>
     </div>
     '''
-    m.get_root().html.add_child(folium.Element(legend_html))
+    root = m.get_root()
+    if hasattr(root, 'html'):
+        root.html.add_child(folium.Element(legend_html))  # type: ignore
+    else:
+        # Fallback for different folium versions
+        from branca.element import Element
+        root.add_child(Element(legend_html))
     
     map_path = output_dir / 'spatial_risk_map.html'
     m.save(str(map_path))

@@ -10,7 +10,10 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import statsmodels.api as sm
-from patsy import dmatrix
+try:
+    from patsy import dmatrix  # type: ignore
+except ImportError:
+    dmatrix = None  # type: ignore
 
 R_SCRIPT = Path('src/models/dlnm_r_script.R')
 PROCESSED = Path('data_processed/region_daily.parquet')
@@ -43,16 +46,20 @@ def python_fallback():
     df['temp_block2'] = df[[f'temp_mean_lag{i}' for i in range(4,8)]].mean(axis=1)
     df['temp_block3'] = df[[f'temp_mean_lag{i}' for i in range(8,15)]].mean(axis=1)
     df['temp_block4'] = df[[f'temp_mean_lag{i}' for i in range(15,22)]].mean(axis=1)
+    if dmatrix is None:
+        raise ImportError("patsy not available. Install with: pip install patsy")
     spline = dmatrix("bs(temp_mean, df=5, degree=3)", data=df, return_type='dataframe')
-    X = pd.concat([spline, df[['temp_block1','temp_block2','temp_block3','temp_block4','rel_humidity']]], axis=1)
-    X = sm.add_constant(X)
+    spline_df = pd.DataFrame(spline) if not isinstance(spline, pd.DataFrame) else spline
+    X_design = pd.concat([spline_df, df[['temp_block1','temp_block2','temp_block3','temp_block4','rel_humidity']]], axis=1)
+    X_design = pd.DataFrame(sm.add_constant(X_design))
     y = df['admissions']
-    model = sm.GLM(y, X, family=sm.families.Poisson()).fit()
+    model = sm.GLM(y, X_design, family=sm.families.Poisson()).fit()
     # Exposure-response: vary temp_mean across observed range holding humidity median
     temps = np.linspace(df.temp_mean.min(), df.temp_mean.max(), 50)
     hum = float(df.rel_humidity.median())
     ex_df = pd.DataFrame({'temp_mean': temps})
     spline_ex = dmatrix("bs(temp_mean, df=5, degree=3)", data=ex_df, return_type='dataframe')
+    spline_ex_df = pd.DataFrame(spline_ex) if not isinstance(spline_ex, pd.DataFrame) else spline_ex
     blocks = {
         'temp_block1': temps,
         'temp_block2': temps,
@@ -60,15 +67,15 @@ def python_fallback():
         'temp_block4': temps,
         'rel_humidity': hum
     }
-    ex_X = pd.concat([spline_ex, pd.DataFrame(blocks)], axis=1)
+    ex_X: pd.DataFrame = pd.concat([spline_ex_df, pd.DataFrame(blocks)], axis=1)
     # Align columns with training design matrix
-    train_cols = X.columns.tolist()
+    train_cols = X_design.columns.tolist()
     # Add constant if missing in training columns
     if 'const' not in train_cols:
-        X_const = sm.add_constant(X)
-        model_const = sm.GLM(y, X_const, family=sm.families.Poisson()).fit()
+        X_const_design = pd.DataFrame(sm.add_constant(X_design))
+        model_const = sm.GLM(y, X_const_design, family=sm.families.Poisson()).fit()
         model = model_const
-        train_cols = X_const.columns.tolist()
+        train_cols = X_const_design.columns.tolist()
     # Build prediction frame with same columns
     if 'const' in train_cols:
         ex_X.insert(0, 'const', 1.0)

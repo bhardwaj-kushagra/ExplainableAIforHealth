@@ -63,7 +63,7 @@ if page == "Overview":
     st.markdown("---")
     st.subheader("Threshold Response Curve")
     if THRESHOLD_CURVE.exists():
-        st.image(str(THRESHOLD_CURVE), use_container_width=True)
+        st.image(str(THRESHOLD_CURVE), width=None)
     else:
         st.warning("Threshold curve not yet generated. Run: `python src/viz.py`")
 
@@ -72,7 +72,7 @@ elif page == "Risk Calendar":
     st.markdown("Daily cardiovascular admissions heatmap by year and week")
     
     if RISK_CALENDAR.exists():
-        st.image(str(RISK_CALENDAR), use_container_width=True)
+        st.image(str(RISK_CALENDAR), width=None)
     else:
         st.warning("Risk calendar not yet generated. Run: `python src/viz.py`")
     
@@ -80,8 +80,12 @@ elif page == "Risk Calendar":
     st.subheader("Spatial Risk Map")
     if SPATIAL_MAP.exists():
         with open(SPATIAL_MAP, 'r', encoding='utf-8') as f:
-            html = f.read()
-        st.components.v1.html(html, height=500)
+            html_content = f.read()
+        try:
+            import streamlit.components.v1 as components
+            components.html(html_content, height=500)
+        except AttributeError:
+            st.markdown(html_content, unsafe_allow_html=True)
     else:
         st.warning("Spatial map not yet generated. Run: `python src/viz.py`")
 
@@ -90,7 +94,7 @@ elif page == "Model Explainability":
     st.markdown("Understanding which features drive cardiovascular risk predictions")
     
     if SHAP_SUMMARY.exists():
-        st.image(str(SHAP_SUMMARY), use_container_width=True)
+        st.image(str(SHAP_SUMMARY), width=None)
     else:
         st.warning("SHAP summary not yet generated. Run: `python src/explainers.py`")
     

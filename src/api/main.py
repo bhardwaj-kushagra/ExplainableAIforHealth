@@ -92,7 +92,10 @@ def predict(request: PredictRequest):
     
     for fc_day in request.forecast:
         # Start with median baseline features
-        features = baseline_data.median().to_dict()
+        if baseline_data is not None:
+            features = baseline_data.median().to_dict()
+        else:
+            raise HTTPException(status_code=503, detail="Baseline data not loaded")
         
         # Override with forecast values
         features['temp_mean'] = fc_day.temp_mean
