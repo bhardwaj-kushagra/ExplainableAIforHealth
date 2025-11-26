@@ -1,0 +1,27 @@
+{
+  "created_at": "2025-11-25T14:44:48.511231Z",
+  "data_path": "C:\\A Developer's Stuff\\CMP\\ExplainableAIforHealth\\data_processed\\region_daily.parquet",
+  "generated": [
+    "c:\\A Developer's Stuff\\CMP\\ExplainableAIforHealth\\outputs\\paper_figures\\ts_admissions_with_climate.png",
+    "c:\\A Developer's Stuff\\CMP\\ExplainableAIforHealth\\outputs\\paper_figures\\hist_admissions.png",
+    "c:\\A Developer's Stuff\\CMP\\ExplainableAIforHealth\\outputs\\paper_figures\\corr_heatmap.png",
+    "c:\\A Developer's Stuff\\CMP\\ExplainableAIforHealth\\outputs\\paper_figures\\box_admissions_by_month.png",
+    "c:\\A Developer's Stuff\\CMP\\ExplainableAIforHealth\\outputs\\paper_figures\\box_admissions_by_weekday.png",
+    "c:\\A Developer's Stuff\\CMP\\ExplainableAIforHealth\\outputs\\paper_figures\\admissions_moving_averages.png"
+  ],
+  "collected": [
+    "c:\\A Developer's Stuff\\CMP\\ExplainableAIforHealth\\outputs\\paper_figures\\risk_calendar.png",
+    "c:\\A Developer's Stuff\\CMP\\ExplainableAIforHealth\\outputs\\paper_figures\\threshold_curve.png",
+    "c:\\A Developer's Stuff\\CMP\\ExplainableAIforHealth\\outputs\\paper_figures\\xgb_calibration.png",
+    "c:\\A Developer's Stuff\\CMP\\ExplainableAIforHealth\\outputs\\paper_figures\\shap_summary.png",
+    "c:\\A Developer's Stuff\\CMP\\ExplainableAIforHealth\\outputs\\paper_figures\\shap_force_surge.png",
+    "c:\\A Developer's Stuff\\CMP\\ExplainableAIforHealth\\outputs\\paper_figures\\dlnm_exposure_response.png",
+    "c:\\A Developer's Stuff\\CMP\\ExplainableAIforHealth\\outputs\\paper_figures\\dlnm_lag_surface.png",
+    "c:\\A Developer's Stuff\\CMP\\ExplainableAIforHealth\\outputs\\paper_figures\\shap_dependence_admissions_lag0.png",
+    "c:\\A Developer's Stuff\\CMP\\ExplainableAIforHealth\\outputs\\paper_figures\\shap_dependence_admissions_lag1.png",
+    "c:\\A Developer's Stuff\\CMP\\ExplainableAIforHealth\\outputs\\paper_figures\\shap_dependence_admissions_lag2.png",
+    "c:\\A Developer's Stuff\\CMP\\ExplainableAIforHealth\\outputs\\paper_figures\\shap_dependence_admissions_rollmean3.png",
+    "c:\\A Developer's Stuff\\CMP\\ExplainableAIforHealth\\outputs\\paper_figures\\shap_dependence_admissions_rollstd3.png",
+    "c:\\A Developer's Stuff\\CMP\\ExplainableAIforHealth\\outputs\\paper_figures\\spatial_risk_map.html"
+  ]
+}
